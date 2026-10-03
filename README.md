@@ -1,7 +1,7 @@
 tadatorch
 ==============================
 
-tadatorch predicts transcriptional activation domains (ADs) in protein sequences. It is a PyTorch re-implementation of TADA ([Morffy, Van den Broeck et al. 2024, Nature](https://doi.org/10.1038/s41586-024-07707-3)), a neural network trained on the activation measured for tens of thousands of 40-amino-acid protein fragments in yeast.
+tadatorch predicts transcriptional activation domains (ADs) in protein sequences. It is a PyTorch reimplementation of TADA (Morffy, Van den Broeck et al. 2024, ***Nature***), a neural network trained on activation measurements for tens of thousands of 40-amino-acid protein fragments in yeast.
 
 Give tadatorch a sequence (or a FASTA file), and it will return a TAD score between 0 and 1 for every 40-amino-acid window, where higher scores mean the window is more likely to activate transcription. It can also turn those scores into annotated activation domains, with start and end positions, from Python or from the command line.
 
@@ -11,6 +11,10 @@ tadatorch uses the same trained network as [TADA_T2](https://github.com/ryanemen
 * is around 85 times faster (0.35 milliseconds per window on one CPU core);
 * annotates activation domains, rather than only scoring windows;
 * gives scores that are very close to, but not identical to, those from TADA_T2 (see [Accuracy and how tadatorch relates to TADA and TADA_T2](#accuracy-and-how-tadatorch-relates-to-tada-and-tada_t2)).
+
+#### Why does tadatorch exist
+
+It was written by Alex Holehouse, based on TADA_T2 (see below) by Ryan Emenecker, and developed purely for  convenience because the TADA network is a state-of-the-art network for AD prediction. 
 
 ## Contents
 
