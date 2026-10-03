@@ -1,0 +1,93 @@
+[build-system]
+requires = ["setuptools>=61.0", "versioningit~=2.0"]
+build-backend = "setuptools.build_meta"
+
+# Self-descriptive entries which should always be present
+# https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
+[project]
+name = "tadatorch"
+description = "A PyTorch re-implementation of the TADA transcriptional activation domain predictor."
+dynamic = ["version"]
+readme = "README.md"
+authors = [
+    { name = "Alex Holehouse", email = "alex.holehouse@wustl.edu" }
+]
+license = { text = "MIT" }
+# See https://pypi.org/classifiers/
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+]
+requires-python = ">=3.10"
+# Declare any run-time dependencies that should be installed with the package.
+dependencies = [
+    "torch",
+    "numpy",
+    "protfasta",
+    "sparrow @ git+https://github.com/idptools/sparrow.git",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=6.1.2",
+]
+# only needed to re-run the scripts in devtools/scripts, which generated the
+# network weights (h5py) and the table of pLDDT scores (alphaPredict) that are
+# shipped with tadatorch
+devtools = [
+  "h5py",
+  "alphaPredict>=1.2",
+]
+
+# command line tool for annotating the activation domains in a FASTA file
+[project.scripts]
+tadatorch = "tadatorch.cli:main"
+
+[tool.setuptools]
+# We declare the package not-zip-safe so that our type hints are also available
+# when checking client code that uses our (installed) package, and so the data
+# files can be read from disk using a normal path.
+zip-safe = false
+include-package-data = true
+
+[tool.setuptools.packages.find]
+namespaces = false
+where = ["."]
+include = ["tadatorch", "tadatorch.*"]
+
+# Ref https://setuptools.pypa.io/en/latest/userguide/datafiles.html#package-data
+[tool.setuptools.package-data]
+tadatorch = [
+    "py.typed",
+    "data/tada.14-0.02.pt",
+    "data/scaler_metric.npy",
+    "data/five_mer_plddt_sums.npy",
+    "data/testing.fasta",
+    "data/README.md",
+]
+
+[tool.versioningit]
+default-version = "1+unknown"
+
+[tool.versioningit.format]
+distance = "{base_version}+{distance}.{vcs}{rev}"
+dirty = "{base_version}+{distance}.{vcs}{rev}.dirty"
+distance-dirty = "{base_version}+{distance}.{vcs}{rev}.dirty"
+
+[tool.versioningit.vcs]
+# The method key:
+method = "git"  # <- The method name
+# Parameters to pass to the method:
+match = ["*"]
+default-tag = "1.0.0"
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+strict = true
+
+# these dependencies do not ship type information
+[[tool.mypy.overrides]]
+module = ["alphaPredict.*", "h5py.*", "sparrow.*"]
+ignore_missing_imports = true
