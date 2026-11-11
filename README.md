@@ -11,6 +11,7 @@ tadatorch uses the same trained network as [TADA_T2](https://github.com/ryanemen
 * is around 85 times faster (0.35 milliseconds per window on one CPU core);
 * annotates activation domains, rather than only scoring windows;
 * gives scores that are very close to, but not identical to, those from TADA_T2 (see [Accuracy and how tadatorch relates to TADA and TADA_T2](#accuracy-and-how-tadatorch-relates-to-tada-and-tada_t2)).
+* generates plots directly!
 
 #### Why does tadatorch exist
 
@@ -35,18 +36,19 @@ It was written by Alex Holehouse, based on TADA_T2 (see below) by Ryan Emenecker
 
 # Installation
 
-tadatorch needs Python 3.10 or later. It can be installed from a local copy of this repository. From the directory holding this README, run:
+tadatorch needs Python 3.10 or later. It also needs [sparrow](https://github.com/idptools/sparrow); specifically (as of Nov 2026) the nardini branch
+
+tadatorch can then be installed from a local copy of this repository. From the directory holding this README, run:
 
 ```bash
 pip install -e .
 ```
 
-The dependencies are installed automatically:
+The remaining dependencies are installed automatically:
 
 * [PyTorch](https://pytorch.org/)
 * numpy
 * [protfasta](https://github.com/idptools/protfasta)
-* [sparrow](https://github.com/idptools/sparrow), installed from GitHub. Note that the package called `sparrow` on PyPI is unrelated, so `pip install sparrow` will not work. tadatorch needs a version of sparrow that includes `sparrow.patterning.vectorized`.
 
 Two groups of optional dependencies are only needed for development: `pip install -e ".[test]"` adds pytest, and `pip install -e ".[devtools]"` adds h5py and alphaPredict, which are only used by the scripts that generated the data files shipped with tadatorch (see [Package layout](#package-layout)).
 
@@ -284,6 +286,7 @@ tadatorch proteins.fasta -o activation_domains.tsv
 * ``-m``, ``--method``: How activation domains are called from the window scores, either ``whole_window`` or ``central_residues``. Default is ``whole_window``.
 * ``--gap-size``: Gaps between activation domains shorter than this many residues are joined. Only used with ``--method central_residues``. Default is 6.
 * ``--min-ad-size``: Activation domains shorter than this many residues are removed. This is also the number of residues at an end of a sequence that must be marked for an activation domain to be extended to that terminus. Only used with ``--method central_residues``. Default is 6.
+* ``--per-residue``: If set, a second TSV with a score for every residue is written to this path (see [Per-residue scores](#per-residue-scores)).
 
 **Columns in the TSV**:
 
@@ -322,6 +325,36 @@ name	start	end	length	windows_above_threshold	mean_score	max_score	sequence
 * Progress messages are printed separately from the TSV (to stderr), so they do not end up in the output if you redirect the TSV to a file with ``>``.
 * Rows are written as each sequence finishes, so a run that is interrupted still leaves the results so far.
 * The command runs on one CPU core. For very large FASTA files (for example many proteomes), it is quickest to split the file up and run several copies of the command at once.
+
+### Per-residue scores
+
+TADA scores 40 amino acid windows, not residues, so a per-residue score has to be defined from the window scores. With ``--per-residue``, each residue gets the highest score of the windows that mark it under the chosen ``--method``: every window it is in with ``whole_window``, or the (at most two) windows it is at the center of with ``central_residues``. This means a residue scores at or above the threshold exactly when a window at or above the threshold marks it, so the per-residue scores and the activation domains always agree on which residues were marked.
+
+```bash
+tadatorch tadatorch/data/testing.fasta -o activation_domains.tsv --per-residue residue_scores.tsv
+```
+
+`residue_scores.tsv` then starts:
+
+```
+name	position	residue	score	in_domain
+0	1	Q	0.6400	1
+0	2	F	0.6400	1
+0	3	N	0.6400	1
+```
+
+**Columns in the per-residue TSV**:
+
+* ``name``: The name of the sequence (its full FASTA header).
+* ``position``: The position of the residue (1-indexed).
+* ``residue``: The amino acid.
+* ``score``: The residue's score (to four decimal places), or ``nan`` if no window marks it. This only happens with ``central_residues``, for the first and last 19 residues of each sequence.
+* ``in_domain``: 1 if the residue is in an activation domain in the main TSV, and 0 if not.
+
+**Notes**:
+
+* With ``whole_window``, ``in_domain`` is 1 exactly when ``score`` is at or above the threshold. With ``central_residues`` the two can differ, because short gaps are joined, short activation domains are removed and activation domains are extended to the termini (see [central_residues](#central_residues)). For example, a residue in a joined gap is in an activation domain but scores under the threshold.
+* The file has one row per residue, with the full FASTA header repeated on every row, so for a whole proteome it is large.
 
 # How activation domains are annotated
 

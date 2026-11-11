@@ -2,12 +2,13 @@
 Tests for the command line interface.
 """
 
+import re
 from pathlib import Path
 
 import pytest
 
 from tadatorch.backend.domains import ActivationDomain
-from tadatorch.cli import TSV_COLUMNS, format_domain_row, main
+from tadatorch.cli import RESIDUE_TSV_COLUMNS, TSV_COLUMNS, format_domain_row, main
 from tadatorch.tests.reference_scores import TADATORCH_SCORES
 
 # A 40 amino acid sequence that scores above 0.5 (about 0.648).
@@ -17,6 +18,9 @@ ACTIVE_SEQUENCE: str = "EFSPENSSSSSWSSQESFLWEESFLHQSFDQSFLLSSPTD"
 INACTIVE_SEQUENCE: str = "EVTKSQSFDHPQPDIPCGFEDTNEESDLRRQLVESTTPNN"
 
 SHORT_SEQUENCE: str = "EFSPENSSSSSWSSQESFLW"
+
+# Matches each page object in a PDF (but not the /Pages object that lists them).
+PDF_PAGE_PATTERN: re.Pattern[bytes] = re.compile(rb"/Type\s*/Page[^s]")
 
 
 def write_fasta(path: Path, names_to_sequences: dict[str, str]) -> str:
@@ -184,3 +188,111 @@ def test_cli_rejects_bad_input(tmp_path: Path) -> None:
     fasta_path = write_fasta(tmp_path / "input.fasta", {"active": ACTIVE_SEQUENCE})
     with pytest.raises(SystemExit):
         main([fasta_path, "--threshold", "1.5"])
+
+
+def test_cli_writes_per_residue_scores(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """
+    The per-residue TSV should have one row per residue of every scored
+    sequence. A 40 amino acid sequence has one window, so with the whole window
+    method every residue gets that window's score, and is in a domain only if
+    the score reaches the threshold.
+    """
+    fasta_path = write_fasta(
+        tmp_path / "input.fasta",
+        {"active": ACTIVE_SEQUENCE, "inactive": INACTIVE_SEQUENCE, "short": SHORT_SEQUENCE},
+    )
+    residue_path = tmp_path / "residues.tsv"
+
+    main([fasta_path, "--per-residue", str(residue_path)])
+    capsys.readouterr()
+
+    residue_text = residue_path.read_text()
+    assert residue_text.splitlines()[0].split("\t") == list(RESIDUE_TSV_COLUMNS)
+
+    # the short sequence is skipped, so has no rows
+    rows = read_tsv(residue_text)
+    assert len(rows) == 2 * len(ACTIVE_SEQUENCE)
+
+    active_rows = [row for row in rows if row["name"] == "active"]
+    assert [row["position"] for row in active_rows] == [str(n) for n in range(1, 41)]
+    assert "".join(row["residue"] for row in active_rows) == ACTIVE_SEQUENCE
+    for row in active_rows:
+        assert float(row["score"]) == pytest.approx(TADATORCH_SCORES[ACTIVE_SEQUENCE], abs=1e-4)
+        assert row["in_domain"] == "1"
+
+    inactive_rows = [row for row in rows if row["name"] == "inactive"]
+    assert all(row["in_domain"] == "0" for row in inactive_rows)
+
+
+def test_cli_per_residue_scores_central_residues(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """
+    With the central residues method only the two central residues of the one
+    window get a score. The domain is still extended to both ends of the
+    sequence, so every residue is in it.
+    """
+    fasta_path = write_fasta(tmp_path / "input.fasta", {"active": ACTIVE_SEQUENCE})
+    residue_path = tmp_path / "residues.tsv"
+
+    main(
+        [
+            fasta_path,
+            "--method",
+            "central_residues",
+            "--min-ad-size",
+            "2",
+            "--per-residue",
+            str(residue_path),
+        ]
+    )
+    capsys.readouterr()
+
+    rows = read_tsv(residue_path.read_text())
+    scored_positions = [row["position"] for row in rows if row["score"] != "nan"]
+    assert scored_positions == ["20", "21"]
+    assert all(row["in_domain"] == "1" for row in rows)
+
+
+def test_cli_per_residue_must_be_a_different_file(tmp_path: Path) -> None:
+    """Writing both TSVs to the same file would mix them up, so should fail."""
+    fasta_path = write_fasta(tmp_path / "input.fasta", {"active": ACTIVE_SEQUENCE})
+    output_path = str(tmp_path / "output.tsv")
+
+    with pytest.raises(SystemExit):
+        main([fasta_path, "--output", output_path, "--per-residue", output_path])
+
+
+def test_cli_plots_one_page_per_sequence(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """
+    The PDF should have one page for each sequence that was scored, and its
+    text should be TrueType rather than Type 3 fonts, so it can be edited in
+    Illustrator.
+    """
+    fasta_path = write_fasta(
+        tmp_path / "input.fasta",
+        {"active": ACTIVE_SEQUENCE, "inactive": INACTIVE_SEQUENCE, "short": SHORT_SEQUENCE},
+    )
+    plot_path = tmp_path / "profiles.pdf"
+
+    main([fasta_path, "--plot", str(plot_path)])
+    capsys.readouterr()
+
+    pdf_bytes = plot_path.read_bytes()
+    assert len(PDF_PAGE_PATTERN.findall(pdf_bytes)) == 2
+    assert b"/FontFile2" in pdf_bytes
+    assert b"/Type3" not in pdf_bytes
+
+
+def test_cli_rejects_bad_plot_paths(tmp_path: Path) -> None:
+    """The plot must be a PDF, and must not overwrite another output."""
+    fasta_path = write_fasta(tmp_path / "input.fasta", {"active": ACTIVE_SEQUENCE})
+
+    with pytest.raises(SystemExit):
+        main([fasta_path, "--plot", str(tmp_path / "profiles.png")])
+
+    output_path = str(tmp_path / "output.pdf")
+    with pytest.raises(SystemExit):
+        main([fasta_path, "--output", output_path, "--plot", output_path])

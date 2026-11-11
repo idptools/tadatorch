@@ -19,8 +19,8 @@ import importlib.resources
 
 import numpy as np
 from sparrow.data import amino_acids as sparrow_amino_acids
-from sparrow.patterning import vectorized as sparrow_patterning
-from sparrow.sequence_analysis import physical_properties
+from sparrow.properties import composition
+from sparrow.properties import patterning as sparrow_patterning
 
 from tadatorch.backend.constants import (
     AMINO_ACIDS,
@@ -242,17 +242,23 @@ def calculate_window_features(window: str) -> tuple[float, ...]:
         called 'sstructure') and the number of each of the 20 amino acids (20
         values).
     """
-    net_charge_per_residue = physical_properties.net_charge_per_residue(window)
-    physicochemical_properties = [
-        physical_properties.mean_residue_scale(window, sparrow_amino_acids.AA_hydro_KD),
-        physical_properties.mean_residue_scale(window, WIMLEY_WHITE_SCALE),
-        net_charge_per_residue,
-        physical_properties.fraction_disorder_promoting(window),
-        physical_properties.fraction_charged(window),
-        abs(net_charge_per_residue),
-        physical_properties.fraction_negative(window),
-        physical_properties.fraction_positive(window),
-    ]
+    # sparrow's composition functions work on batches of sequences, so the
+    # window is counted once as a batch of one, and each function returns an
+    # array holding a single value
+    residue_counts = composition.count_residues(window)
+    net_charge_per_residue = composition.net_charge_per_residue(residue_counts)
+    physicochemical_properties = np.concatenate(
+        [
+            composition.mean_scale(residue_counts, sparrow_amino_acids.AA_hydro_KD),
+            composition.mean_scale(residue_counts, WIMLEY_WHITE_SCALE),
+            net_charge_per_residue,
+            composition.fraction_disorder_promoting(residue_counts),
+            composition.fraction_charged(residue_counts),
+            np.abs(net_charge_per_residue),
+            composition.fraction_negative(residue_counts),
+            composition.fraction_positive(residue_counts),
+        ]
+    )
 
     group_counts = [
         sum(residue in group_residues for residue in window)
@@ -265,7 +271,7 @@ def calculate_window_features(window: str) -> tuple[float, ...]:
     amino_acid_counts = [window.count(amino_acid) for amino_acid in AMINO_ACIDS]
 
     return (
-        *physicochemical_properties,
+        *physicochemical_properties.tolist(),
         *group_counts,
         mean_predicted_plddt,
         *amino_acid_counts,
@@ -302,9 +308,9 @@ def calculate_patterning(
         both, and when one group is given it is sequences with no residues
         from it.
     """
-    # the final argument tells sparrow to cap values above 1 at exactly 1
+    # flatten tells sparrow to cap values above 1 at exactly 1
     per_blob_size = [
-        sparrow_patterning.kappa_x_batch(sequences, group_1, group_2, blob_size, 1)
+        sparrow_patterning.kappa_x(sequences, group_1, group_2, blob_size, flatten=True)
         for blob_size in KAPPA_BLOB_SIZES
     ]
 

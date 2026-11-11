@@ -8,9 +8,14 @@ import pytest
 from tadatorch.backend.constants import TADA_SEQUENCE_LENGTH
 from tadatorch.backend.domains import (
     CENTRAL_RESIDUES_METHOD,
+    METHODS,
+    WHOLE_WINDOW_METHOD,
+    calculate_residue_scores,
     find_activation_domains,
     find_contiguous_regions,
+    get_marked_residues,
     join_short_gaps,
+    mark_residues,
     remove_short_domains,
 )
 from tadatorch.tada import predict_activation_domains
@@ -25,6 +30,10 @@ EXACT_SEQUENCE: str = "EFSPENSSSSSWSSQESFLWEESFLHQSFDQSFLLSSPTD"
 
 # Largest difference allowed between scores that should be the same.
 SCORE_TOLERANCE: float = 0.000001
+
+# Seed for the random window scores used to check that per-residue scores agree
+# with the residues marked by each method.
+RESIDUE_SCORE_TEST_SEED: int = 0
 
 
 def make_test_sequence(length: int) -> str:
@@ -387,3 +396,68 @@ def test_predict_activation_domains_rejects_bad_sequences() -> None:
         predict_activation_domains(EXACT_SEQUENCE[:-1])
     with pytest.raises(ValueError):
         predict_activation_domains(EXACT_SEQUENCE.lower())
+
+
+def test_residue_scores_whole_window_uses_every_window_a_residue_is_in() -> None:
+    """
+    With the whole window method, each residue should get the highest score
+    of all the windows it is in.
+    """
+    # 42 residues have three windows, covering residues 1-40, 2-41 and 3-42
+    sequence = make_test_sequence(42)
+    window_scores = np.array([0.2, 0.7, 0.4])
+
+    residue_scores = calculate_residue_scores(sequence, window_scores, WHOLE_WINDOW_METHOD)
+
+    # residue 1 is only in the first window, residues 2-41 are all in the
+    # second (highest scoring) window, and residue 42 is only in the third
+    expected = np.array([0.2] + [0.7] * 40 + [0.4])
+    np.testing.assert_array_equal(residue_scores, expected)
+
+
+def test_residue_scores_central_residues_only_scores_the_centers() -> None:
+    """
+    With the central residues method, only residues at the center of a window
+    should get a score, which is the highest score of the windows they are at
+    the center of. Every other residue should be NaN.
+    """
+    sequence = make_test_sequence(42)
+    window_scores = np.array([0.2, 0.7, 0.4])
+
+    residue_scores = calculate_residue_scores(sequence, window_scores, CENTRAL_RESIDUES_METHOD)
+
+    # the windows are centered on residues 20-21, 21-22 and 22-23 (1-indexed)
+    expected = np.full(len(sequence), np.nan)
+    expected[19:23] = [0.2, 0.7, 0.7, 0.4]
+    np.testing.assert_array_equal(residue_scores, expected)
+
+
+def test_residue_scores_agree_with_the_marked_residues() -> None:
+    """
+    For both methods and any threshold, the residues scoring at or above the
+    threshold should be exactly the residues marked by windows at or above it.
+    """
+    sequence = make_test_sequence(150)
+    number_of_windows = len(sequence) - TADA_SEQUENCE_LENGTH + 1
+    window_scores = np.random.default_rng(RESIDUE_SCORE_TEST_SEED).random(number_of_windows)
+
+    for method in METHODS:
+        residue_scores = calculate_residue_scores(sequence, window_scores, method)
+        first_marked, number_marked = get_marked_residues(method)
+
+        for threshold in [0.1, 0.5, 0.9]:
+            is_marked = mark_residues(
+                window_scores >= threshold, len(sequence), first_marked, number_marked
+            )
+            np.testing.assert_array_equal(residue_scores >= threshold, is_marked)
+
+
+def test_calculate_residue_scores_rejects_bad_input() -> None:
+    """A method that does not exist, or the wrong number of scores, should fail."""
+    sequence = make_test_sequence(100)
+    window_scores = make_window_scores(sequence, [10])
+
+    with pytest.raises(ValueError):
+        calculate_residue_scores(sequence, window_scores, method="middle")
+    with pytest.raises(ValueError):
+        calculate_residue_scores(sequence, window_scores[:-1])

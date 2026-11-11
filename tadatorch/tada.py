@@ -2,6 +2,7 @@
 
 import os
 
+import numpy as np
 import protfasta
 
 from tadatorch.backend.constants import TADA_SEQUENCE_LENGTH
@@ -251,6 +252,44 @@ def predict_from_fasta(
     return final_dict
 
 
+def predict_window_scores(sequence: str) -> np.ndarray:
+    """
+    Predict the TAD score of every 40 amino acid window of a sequence.
+
+    Parameters
+    ----------
+    sequence : str
+        Amino acid sequence at least 40 residues long. The sequence can only
+        contain the 20 standard amino acids (uppercase).
+
+    Returns
+    -------
+    np.ndarray
+        Array of len(sequence) - 39 TAD scores, where the score at index i is
+        for the window ``sequence[i:i + 40]`` (so each window starts one
+        residue after the previous one).
+
+    Raises
+    ------
+    ValueError
+        If the sequence contains invalid residues or is under 40 amino acids.
+    """
+    validate_sequence(sequence)
+
+    if len(sequence) < TADA_SEQUENCE_LENGTH:
+        raise ValueError(
+            f"Activation domains can only be predicted for sequences at least "
+            f"{TADA_SEQUENCE_LENGTH} amino acids long, but got {len(sequence)}."
+        )
+
+    # every possible 40 amino acid window, so windows[i] is sequence[i:i + 40]
+    windows = sliding_window(
+        sequence, window_length=TADA_SEQUENCE_LENGTH, overlap=TADA_SEQUENCE_LENGTH - 1
+    )
+
+    return np.asarray(_predict_tada(windows), dtype=np.float64)
+
+
 def predict_activation_domains(
     sequence: str,
     threshold: float = DEFAULT_SCORE_THRESHOLD,
@@ -321,19 +360,7 @@ def predict_activation_domains(
         If the sequence contains invalid residues or is under 40 amino acids,
         or if the threshold, method, gap_size or min_ad_size are not valid.
     """
-    validate_sequence(sequence)
-
-    if len(sequence) < TADA_SEQUENCE_LENGTH:
-        raise ValueError(
-            f"Activation domains can only be predicted for sequences at least "
-            f"{TADA_SEQUENCE_LENGTH} amino acids long, but got {len(sequence)}."
-        )
-
-    # every possible 40 amino acid window, so windows[i] is sequence[i:i + 40]
-    windows = sliding_window(
-        sequence, window_length=TADA_SEQUENCE_LENGTH, overlap=TADA_SEQUENCE_LENGTH - 1
-    )
-    window_scores = _predict_tada(windows)
+    window_scores = predict_window_scores(sequence)
 
     return find_activation_domains(
         sequence,

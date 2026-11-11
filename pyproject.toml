@@ -24,7 +24,14 @@ dependencies = [
     "torch",
     "numpy",
     "protfasta",
-    "sparrow @ git+https://github.com/idptools/sparrow.git",
+    # sparrow's distribution is called idptools-sparrow (the import name is still
+    # `sparrow`); the `sparrow` on PyPI is an unrelated project. A plain name rather
+    # than a git URL means an existing local install of sparrow satisfies this,
+    # instead of being replaced with whatever is on GitHub.
+    "idptools-sparrow",
+    # only used to plot per-residue profiles (tadatorch --plot)
+    "metapredict>=3",
+    "matplotlib",
 ]
 
 [project.optional-dependencies]
@@ -89,5 +96,5 @@ strict = true
 
 # these dependencies do not ship type information
 [[tool.mypy.overrides]]
-module = ["alphaPredict.*", "h5py.*", "sparrow.*"]
+module = ["alphaPredict.*", "h5py.*", "metapredict.*", "sparrow.*"]
 ignore_missing_imports = true

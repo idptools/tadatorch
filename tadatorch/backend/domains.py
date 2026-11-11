@@ -121,6 +121,42 @@ def find_contiguous_regions(is_selected: np.ndarray) -> list[tuple[int, int]]:
     return [(int(start), int(end)) for start, end in zip(region_starts, region_ends)]
 
 
+def check_window_scores(sequence: str, window_scores: list[float] | np.ndarray) -> np.ndarray:
+    """
+    Check there is one TAD score for every 40 amino acid window of a sequence.
+
+    Parameters
+    ----------
+    sequence : str
+        Amino acid sequence at least 40 residues long.
+
+    window_scores : list of float or np.ndarray
+        TAD score for every 40 amino acid window of the sequence, in order,
+        where the window at index i covers ``sequence[i:i + 40]``.
+
+    Returns
+    -------
+    np.ndarray
+        The window scores as a float64 array of shape (len(sequence) - 39,).
+
+    Raises
+    ------
+    ValueError
+        If the number of scores does not match the number of windows in the
+        sequence.
+    """
+    scores = np.asarray(window_scores, dtype=np.float64)
+
+    number_of_windows = len(sequence) - TADA_SEQUENCE_LENGTH + 1
+    if scores.shape != (number_of_windows,):
+        raise ValueError(
+            f"A sequence of {len(sequence)} residues has {number_of_windows} windows of "
+            f"{TADA_SEQUENCE_LENGTH}, but got scores with shape {scores.shape}."
+        )
+
+    return scores
+
+
 def get_marked_residues(method: str) -> tuple[int, int]:
     """
     Get which residues of a window are marked as being in an activation
@@ -182,6 +218,72 @@ def mark_residues(
         is_in_domain[first_residue : first_residue + number_marked] = True
 
     return is_in_domain
+
+
+def calculate_residue_scores(
+    sequence: str, window_scores: list[float] | np.ndarray, method: str = DEFAULT_METHOD
+) -> np.ndarray:
+    """
+    Give every residue of a sequence a TAD score from the scores of its windows.
+
+    TADA scores 40 amino acid windows rather than residues, so a per-residue
+    score has to be defined from the window scores. Here each residue gets the
+    highest score of the windows that would mark it as being in an activation
+    domain. With the 'whole_window' method that is every window the residue
+    is in, and with the 'central_residues' method it is the (at most two)
+    windows the residue is at the center of.
+
+    This means a residue scores at or above a threshold exactly when a window
+    at or above that threshold marks it, so applying the threshold to these
+    scores gives the residues that activation domains are built from. With
+    the 'central_residues' method, domains can then still differ from this,
+    because short gaps are joined, short domains are removed and domains are
+    extended to the termini (see ``find_activation_domains()``).
+
+    Parameters
+    ----------
+    sequence : str
+        Amino acid sequence at least 40 residues long.
+
+    window_scores : list of float or np.ndarray
+        TAD score for every 40 amino acid window of the sequence, in order,
+        where the window at index i covers ``sequence[i:i + 40]``. There must
+        be len(sequence) - 39 scores.
+
+    method : str
+        Which residues of a window it scores: 'whole_window' or
+        'central_residues'. Default is 'whole_window'.
+
+    Returns
+    -------
+    np.ndarray
+        Float array with one score per residue. Residues that no window marks
+        are NaN, which only happens with the 'central_residues' method, for
+        the first and last 19 residues of the sequence.
+
+    Raises
+    ------
+    ValueError
+        If the method is not one of the two options, or the number of scores
+        does not match the number of windows in the sequence.
+    """
+    if method not in METHODS:
+        raise ValueError(f"The method must be one of {METHODS}, but got '{method}'.")
+
+    scores = check_window_scores(sequence, window_scores)
+    first_marked, number_marked = get_marked_residues(method)
+
+    residue_scores = np.full(len(sequence), np.nan)
+
+    for window_start, window_score in enumerate(scores):
+        first_residue = window_start + first_marked
+        marked_residues = slice(first_residue, first_residue + number_marked)
+
+        # fmax ignores NaN, so the first window to mark a residue sets its
+        # score, and later windows only replace it with a higher score
+        residue_scores[marked_residues] = np.fmax(residue_scores[marked_residues], window_score)
+
+    return residue_scores
 
 
 def join_short_gaps(is_in_domain: np.ndarray, gap_size: int) -> np.ndarray:
@@ -392,14 +494,8 @@ def find_activation_domains(
     if gap_size < 0 or min_ad_size < 0:
         raise ValueError("gap_size and min_ad_size cannot be negative.")
 
-    scores = np.asarray(window_scores, dtype=np.float64)
-
-    number_of_windows = len(sequence) - TADA_SEQUENCE_LENGTH + 1
-    if scores.shape != (number_of_windows,):
-        raise ValueError(
-            f"A sequence of {len(sequence)} residues has {number_of_windows} windows of "
-            f"{TADA_SEQUENCE_LENGTH}, but got scores with shape {scores.shape}."
-        )
+    scores = check_window_scores(sequence, window_scores)
+    number_of_windows = len(scores)
 
     is_above_threshold = scores >= threshold
 
