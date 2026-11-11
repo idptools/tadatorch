@@ -11,7 +11,7 @@ rectangles along a line the length of the sequence.
 
 import contextlib
 from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import matplotlib
 import metapredict
@@ -20,13 +20,18 @@ from matplotlib.axes import Axes
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
-from matplotlib.typing import RcKeyType
 
 from tadatorch.backend.domains import (
     CENTRAL_RESIDUES_METHOD,
     ActivationDomain,
     calculate_residue_scores,
 )
+
+# RcKeyType is only needed for type checking, and is only in matplotlib 3.11
+# and later, so it is not imported when tadatorch runs (Google Colab, for
+# example, has matplotlib 3.10).
+if TYPE_CHECKING:
+    from matplotlib.typing import RcKeyType
 
 # The metapredict network used to predict disorder. metapredict is described in
 # Emenecker, Griffith & Holehouse 2021, Biophys. J. 120, 4312-4319, and its
@@ -35,7 +40,7 @@ METAPREDICT_VERSION: str = "V3"
 
 # Plot settings. Type 42 (TrueType) fonts are embedded as text rather than as
 # outlines, so text in the PDF can be edited in Illustrator.
-PLOT_RC_PARAMS: dict[RcKeyType, Any] = {
+PLOT_RC_PARAMS: "dict[RcKeyType, Any]" = {
     "font.family": "Arial",
     "font.size": 8,
     "pdf.fonttype": 42,
