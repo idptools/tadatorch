@@ -5,6 +5,10 @@ tadatorch predicts transcriptional activation domains (ADs) in protein sequences
 
 Give tadatorch a sequence (or a FASTA file), and it will return a TAD score between 0 and 1 for every 40-amino-acid window, where higher scores mean the window is more likely to activate transcription. It can also turn those scores into annotated activation domains, with start and end positions, from Python or from the command line.
 
+To try tadatorch without installing anything, open the [Google Colab notebook](colab/tadatorch_colab.ipynb): paste in a sequence, choose the settings, and it plots the predicted activation domains.
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/idptools/tadatorch/blob/main/colab/tadatorch_colab.ipynb)
+
 tadatorch uses the same trained network as [TADA_T2](https://github.com/ryanemenecker/TADA_T2) (the TensorFlow2 version of TADA) and its user-facing functions take the same arguments and return the same format, but it:
 
 * does not need TensorFlow, localcider, or alphaPredict;
@@ -457,6 +461,7 @@ tadatorch/
 │   ├── __init__.py          # exposes predict, predict_from_fasta and predict_activation_domains
 │   ├── tada.py              # the user-facing functions
 │   ├── cli.py               # the tadatorch command
+│   ├── plotting.py          # per-residue plots of TAD score, disorder and activation domains
 │   ├── backend/
 │   │   ├── constants.py     # window sizes, the number of features and the amino acid order
 │   │   ├── features.py      # calculating and scaling features
@@ -471,6 +476,8 @@ tadatorch/
 │   │   ├── testing.fasta            # four sequences used by the tests
 │   │   └── README.md                # where each data file came from
 │   └── tests/                       # the tests (pytest)
+├── colab/
+│   └── tadatorch_colab.ipynb        # Google Colab notebook for plotting the activation domains of a sequence
 └── devtools/scripts/
     ├── convert_keras_weights.py     # converts the original Keras weights to tada.14-0.02.pt
     └── build_plddt_table.py         # builds five_mer_plddt_sums.npy with alphaPredict

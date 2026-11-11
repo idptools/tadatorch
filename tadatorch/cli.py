@@ -14,7 +14,6 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 from tadatorch.backend.constants import TADA_SEQUENCE_LENGTH
 from tadatorch.backend.domains import (
-    CENTRAL_RESIDUES_METHOD,
     DEFAULT_GAP_SIZE,
     DEFAULT_METHOD,
     DEFAULT_MIN_AD_SIZE,
@@ -24,7 +23,7 @@ from tadatorch.backend.domains import (
     calculate_residue_scores,
     find_activation_domains,
 )
-from tadatorch.plotting import open_profile_pdf, plot_residue_profile, predict_disorder
+from tadatorch.plotting import open_profile_pdf, plot_sequence_profile
 from tadatorch.tada import predict_window_scores, read_fasta_sequences
 
 # Names of the columns in the TSV of activation domains, in the order they are
@@ -293,11 +292,8 @@ def add_profile_page(
     domains: list[ActivationDomain],
 ) -> None:
     """
-    Plot the per-residue profile of a sequence as a new page of a PDF.
-
-    The profile always shows the per-residue TAD score from the
-    'central_residues' method (whichever method the activation domains were
-    called with), alongside the disorder score predicted by metapredict.
+    Plot the per-residue profile of a sequence (see
+    ``plot_sequence_profile()``) as a new page of a PDF.
 
     Parameters
     ----------
@@ -316,12 +312,7 @@ def add_profile_page(
     domains : list of ActivationDomain
         The activation domains found in the sequence, drawn on the domain map.
     """
-    central_residue_scores = calculate_residue_scores(
-        sequence, window_scores, CENTRAL_RESIDUES_METHOD
-    )
-    disorder_scores = predict_disorder(sequence)
-
-    figure = plot_residue_profile(name, central_residue_scores, disorder_scores, domains)
+    figure = plot_sequence_profile(name, sequence, window_scores, domains)
     # matplotlib does not type-annotate PdfPages.savefig
     plot_pdf.savefig(figure)  # type: ignore[no-untyped-call]
 

@@ -12,6 +12,7 @@ from tadatorch.plotting import (
     AD_FACE_COLOR,
     PLOT_RC_PARAMS,
     plot_residue_profile,
+    plot_sequence_profile,
     predict_disorder,
     residue_axis_limits,
 )
@@ -128,3 +129,20 @@ def test_profile_without_domains_only_draws_the_sequence_line() -> None:
     domain_map_axes = figure.axes[0]
     assert len(domain_map_axes.patches) == 0
     assert len(domain_map_axes.get_lines()) == 1
+
+
+def test_plot_sequence_profile_uses_central_residue_scores() -> None:
+    """
+    A 40 amino acid sequence has one window, so the TAD score line should only
+    have values at the window's two central residues (20 and 21), whatever
+    method its domains were called with.
+    """
+    window_score = 0.6
+    figure = plot_sequence_profile("name", TEST_SEQUENCE, np.array([window_score]), [])
+
+    tad_line, disorder_line = figure.axes[1].get_lines()
+    tad_scores = np.asarray(tad_line.get_ydata(), dtype=np.float64)
+
+    assert list(np.flatnonzero(~np.isnan(tad_scores)) + 1) == [20, 21]
+    assert np.all(tad_scores[19:21] == window_score)
+    np.testing.assert_array_equal(disorder_line.get_ydata(), predict_disorder(TEST_SEQUENCE))

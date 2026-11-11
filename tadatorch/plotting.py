@@ -22,7 +22,11 @@ from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
 from matplotlib.typing import RcKeyType
 
-from tadatorch.backend.domains import ActivationDomain
+from tadatorch.backend.domains import (
+    CENTRAL_RESIDUES_METHOD,
+    ActivationDomain,
+    calculate_residue_scores,
+)
 
 # The metapredict network used to predict disorder. metapredict is described in
 # Emenecker, Griffith & Holehouse 2021, Biophys. J. 120, 4312-4319, and its
@@ -257,6 +261,44 @@ def plot_residue_profile(
         domain_map_axes.set_title(name, loc="left", fontsize=NAME_FONT_SIZE)
 
     return figure
+
+
+def plot_sequence_profile(
+    name: str, sequence: str, window_scores: np.ndarray, domains: list[ActivationDomain]
+) -> Figure:
+    """
+    Plot the per-residue profile of a sequence from its window scores.
+
+    The profile always shows the per-residue TAD score from the
+    'central_residues' method (whichever method the activation domains were
+    called with), alongside the disorder score predicted by metapredict.
+
+    Parameters
+    ----------
+    name : str
+        Name of the sequence, written above the domain map.
+
+    sequence : str
+        Amino acid sequence.
+
+    window_scores : np.ndarray
+        TAD score for every 40 amino acid window of the sequence, as returned
+        by ``predict_window_scores()``.
+
+    domains : list of ActivationDomain
+        The activation domains found in the sequence, drawn on the domain map.
+
+    Returns
+    -------
+    Figure
+        The figure (see ``plot_residue_profile()``).
+    """
+    central_residue_scores = calculate_residue_scores(
+        sequence, window_scores, CENTRAL_RESIDUES_METHOD
+    )
+    disorder_scores = predict_disorder(sequence)
+
+    return plot_residue_profile(name, central_residue_scores, disorder_scores, domains)
 
 
 @contextlib.contextmanager
